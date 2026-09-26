@@ -1,0 +1,567 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>DNA 双螺旋结构 3D 交互模型</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=Noto+Sans+SC:wght@300;400;500;700&display=swap');
+  * { margin:0; padding:0; box-sizing:border-box; }
+  :root {
+    --bg:#08090e;
+    --A:#ff4d6a; --T:#4dc8ff; --G:#4dff91; --C:#ffb84d;
+    --sugar:#c49aff; --phosphate:#ff6b9d;
+    --bone:#d8d4cf; --hline:rgba(255,255,255,0.55);
+  }
+  body { background:var(--bg); color:#e8e6e3; font-family:'Space Grotesk','Noto Sans SC',sans-serif; overflow:hidden; height:100vh; }
+  #c { position:fixed; inset:0; }
+
+  /* ─── UI ─── */
+  .top { position:fixed; top:0; left:0; right:0; z-index:10; display:flex; justify-content:space-between; align-items:center; padding:16px 28px; background:linear-gradient(180deg,rgba(8,9,14,.95),transparent); pointer-events:none; }
+  .top>*{pointer-events:auto}
+  .logo{font-size:17px;font-weight:600;display:flex;align-items:center;gap:8px}
+  .logo span{background:linear-gradient(135deg,var(--A),var(--T));-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+  .hint{font-size:11px;color:#666}
+
+  .side { position:fixed; left:20px; top:50%; transform:translateY(-50%); z-index:10; display:flex; flex-direction:column; gap:5px; }
+  .sb { width:42px;height:42px;border-radius:11px;border:1px solid rgba(255,255,255,.07);background:rgba(255,255,255,.025);color:#888;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:.2s;backdrop-filter:blur(8px);position:relative }
+  .sb:hover{background:rgba(255,255,255,.07);color:#ddd;border-color:rgba(255,255,255,.12)}
+  .sb.on{background:rgba(77,200,255,.1);border-color:rgba(77,200,255,.25);color:var(--T)}
+  .sb svg{width:18px;height:18px}
+  .tt{position:absolute;left:50px;white-space:nowrap;background:rgba(18,18,26,.94);border:1px solid rgba(255,255,255,.08);border-radius:7px;padding:5px 11px;font-size:11px;opacity:0;pointer-events:none;transition:.15s;color:#ccc}
+  .sb:hover .tt{opacity:1}
+
+  /* info panel */
+  .info { position:fixed; right:20px; top:50%; transform:translateY(-50%) translateX(16px); z-index:10; width:260px; background:rgba(12,12,18,.88); border:1px solid rgba(255,255,255,.07); border-radius:14px; padding:22px; backdrop-filter:blur(16px); opacity:0; pointer-events:none; transition:.35s cubic-bezier(.16,1,.3,1); }
+  .info.vis{opacity:1;pointer-events:auto;transform:translateY(-50%) translateX(0)}
+  .info h4{font-size:11px;text-transform:uppercase;letter-spacing:1px;color:#666;margin-bottom:10px}
+  .info .name{font-size:20px;font-weight:700;margin-bottom:4px}
+  .info .pair{font-size:12px;color:#888;margin-bottom:14px}
+  .row{display:flex;align-items:center;gap:8px;padding:7px 0;border-top:1px solid rgba(255,255,255,.06);font-size:12px;color:#aaa}
+  .dot{width:7px;height:7px;border-radius:50%;flex-shrink:0}
+
+  .legend { position:fixed; bottom:20px; left:50%; transform:translateX(-50%); z-index:10; display:flex; gap:16px; padding:10px 22px; background:rgba(12,12,18,.78); border:1px solid rgba(255,255,255,.06); border-radius:12px; backdrop-filter:blur(12px); }
+  .li{display:flex;align-items:center;gap:6px;font-size:11px;color:#888}
+  .ld{width:9px;height:9px;border-radius:2px}
+
+  .spd { position:fixed; bottom:20px; left:20px; z-index:10; display:flex; gap:6px; }
+  .sp{font-size:10px;padding:4px 10px;border-radius:7px;border:1px solid rgba(255,255,255,.07);background:rgba(255,255,255,.02);color:#888;cursor:pointer;font-family:inherit;transition:.15s}
+  .sp:hover,.sp.on{background:rgba(255,255,255,.06);color:#ddd}
+  .sp.on{border-color:rgba(77,200,255,.25);color:var(--T)}
+
+  .dc { position:fixed; bottom:70px; left:50%; transform:translateX(-50%); z-index:10; display:flex; align-items:center; gap:12px; padding:9px 18px; background:rgba(12,12,18,.85); border:1px solid rgba(255,255,255,.06); border-radius:11px; backdrop-filter:blur(12px); opacity:0; pointer-events:none; transition:.25s; }
+  .dc.vis{opacity:1;pointer-events:auto}
+  .dc label{font-size:11px;color:#888;white-space:nowrap}
+  .dc input[type=range]{width:160px;accent-color:var(--T);cursor:pointer}
+
+  .stat{position:fixed;bottom:20px;right:20px;z-index:10;font-size:10px;color:#555;display:flex;align-items:center;gap:5px}
+  .stat-dot{width:5px;height:5px;border-radius:50%;background:var(--G);animation:p 2s ease infinite}
+  @keyframes p{0%,100%{opacity:.3}50%{opacity:1}}
+</style>
+</head>
+<body>
+<div id="c"></div>
+
+<div class="top">
+  <div class="logo">
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 15c6.667-6 13.333 0 20-6"/><path d="M9 22c1.798-1.998 2.518-3.995 2.807-5.993"/><path d="M15 2c-1.798 1.998-2.518 3.995-2.807 5.993"/></svg>
+    <span>DNA 双螺旋结构</span>
+  </div>
+  <div class="hint">拖拽旋转 · 滚轮缩放 · 点击碱基查看详情</div>
+</div>
+
+<div class="side">
+  <button class="sb on" id="br" onclick="togRot()"><span class="tt">自动旋转</span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12a9 9 0 11-6.22-8.56"/><polyline points="21 3 21 9 15 9"/></svg></button>
+  <button class="sb" id="bd" onclick="togDec()"><span class="tt">结构拆解</span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v20M2 12h20"/><circle cx="12" cy="12" r="2"/></svg></button>
+  <button class="sb" id="bl" onclick="togLab()"><span class="tt">显示标签</span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 7V4h16v3M9 20h6M12 4v16"/></svg></button>
+  <button class="sb" id="bx" onclick="togXray()"><span class="tt">透视模式</span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 2a15.3 15.3 0 014 10 15.3 15.3 0 01-4 10 15.3 15.3 0 01-4-10 15.3 15.3 0 014-10z"/></svg></button>
+  <button class="sb" onclick="resetV()"><span class="tt">重置视角</span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 109-9 9.75 9.75 0 00-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg></button>
+</div>
+
+<div class="info" id="info">
+  <h4>脱氧核苷酸详情</h4>
+  <div class="name" id="iN">—</div>
+  <div class="pair" id="iP">—</div>
+  <div class="row"><div class="dot" id="iD"></div><span id="iT">—</span></div>
+  <div class="row"><div class="dot" style="background:var(--sugar)"></div><span>脱氧核糖（五碳糖）</span></div>
+  <div class="row"><div class="dot" style="background:var(--phosphate)"></div><span>磷酸基团（PO₄³⁻）</span></div>
+  <div class="row" id="iH"><div class="dot" style="background:rgba(255,255,255,.35)"></div><span id="iHt">—</span></div>
+</div>
+
+<div class="dc" id="dc"><label>拆解程度</label><input type="range" id="ds" min="0" max="100" value="0" oninput="setDec(this.value)"></div>
+
+<div class="legend">
+  <div class="li"><div class="ld" style="background:var(--A)"></div>腺嘌呤 A</div>
+  <div class="li"><div class="ld" style="background:var(--T)"></div>胸腺嘧啶 T</div>
+  <div class="li"><div class="ld" style="background:var(--G)"></div>鸟嘌呤 G</div>
+  <div class="li"><div class="ld" style="background:var(--C)"></div>胞嘧啶 C</div>
+  <div class="li"><div class="ld" style="background:var(--sugar)"></div>脱氧核糖</div>
+  <div class="li"><div class="ld" style="background:var(--phosphate)"></div>磷酸基团</div>
+  <div class="li"><div class="ld" style="background:var(--hline);border-radius:50%"></div>氢键</div>
+</div>
+
+<div class="spd">
+  <button class="sp" onclick="setSpd(0)">⏸</button>
+  <button class="sp on" onclick="setSpd(1)">1×</button>
+  <button class="sp" onclick="setSpd(2)">2×</button>
+  <button class="sp" onclick="setSpd(4)">4×</button>
+</div>
+
+<div class="stat"><div class="stat-dot"></div><span>实时渲染</span></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+/* ══════════════════════════════════════════════════════════
+   DNA DOUBLE HELIX — Correct Biology Model
+   ══════════════════════════════════════════════════════════
+   Structure (cross-section, looking down from 5'):
+                 5' backbone
+                /          \
+         Sugar-P            Sugar-P
+              \              /
+               Base ··· Base    ← bases on INSIDE, H-bonds between
+               Base ··· Base
+              /              \
+         Sugar-P            Sugar-P
+                \          /
+                 3' backbone
+   
+   - Backbone (sugar+phosphate) runs on the OUTSIDE
+   - Nitrogenous bases extend INWARD from the backbone
+   - Complementary bases pair via hydrogen bonds (dashed lines)
+   - A-T = 2 H-bonds, G-C = 3 H-bonds
+   - Strands are antiparallel (5'→3' vs 3'→5')
+   ══════════════════════════════════════════════════════════ */
+
+const PAIRS = ['AT','GC','TA','CG','AT','GC','GC','AT','CG','TA','AT','GC','TA','CG','GC','AT','AT','GC','TA','CG'];
+const COL = { A:0xff4d6a, T:0x4dc8ff, G:0x4dff91, C:0xffb84d, sugar:0xc49aff, phos:0xff6b9d };
+const NAMES = { A:'腺嘌呤 (Adenine)', T:'胸腺嘧啶 (Thymine)', G:'鸟嘌呤 (Guanine)', C:'胞嘧啶 (Cytosine)' };
+const PAIR_OF = { A:'T', T:'A', G:'C', C:'G' };
+const HBONDS = { AT:2, TA:2, GC:3, CG:3 };
+
+let scene, cam, ren, clk, grp;
+let nucs = [], hLines = [], sprs = [];
+let autoR=true, decM=false, labM=false, xrayM=false, spd=1, decV=0;
+let ray, mpos, selNuc=null;
+let drag=false, pm={x:0,y:0}, rX=0, rY=0;
+
+function init(){
+  scene = new THREE.Scene();
+  clk = new THREE.Clock();
+  cam = new THREE.PerspectiveCamera(48, innerWidth/innerHeight, .1, 500);
+  cam.position.set(0, 0, 38);
+  ren = new THREE.WebGLRenderer({antialias:true, alpha:true});
+  ren.setSize(innerWidth, innerHeight);
+  ren.setPixelRatio(Math.min(devicePixelRatio, 2));
+  ren.toneMapping = THREE.ACESFilmicToneMapping;
+  ren.toneMappingExposure = 1.3;
+  document.getElementById('c').appendChild(ren.domElement);
+
+  // Lighting
+  scene.add(new THREE.AmbientLight(0x505070, 0.5));
+  const d1 = new THREE.DirectionalLight(0xffeedd, .9); d1.position.set(8,12,8); scene.add(d1);
+  const d2 = new THREE.DirectionalLight(0x8899cc, .4); d2.position.set(-8,-4,-8); scene.add(d2);
+  scene.add(new THREE.PointLight(0xff6688, .3, 50));
+
+  // Stars
+  const sg = new THREE.BufferGeometry(), sp = [];
+  for(let i=0;i<500;i++) sp.push((Math.random()-.5)*120,(Math.random()-.5)*120,(Math.random()-.5)*120-15);
+  sg.setAttribute('position', new THREE.Float32BufferAttribute(sp,3));
+  scene.add(new THREE.Points(sg, new THREE.PointsMaterial({color:0x444455,size:.12,transparent:true,opacity:.4})));
+
+  grp = new THREE.Group();
+  scene.add(grp);
+  build();
+
+  ray = new THREE.Raycaster();
+  mpos = new THREE.Vector2(-99,-99);
+  ren.domElement.addEventListener('mousemove', e=>{
+    mpos.x = (e.clientX/innerWidth)*2-1;
+    mpos.y = -(e.clientY/innerHeight)*2+1;
+  });
+  ren.domElement.addEventListener('click', onClick);
+  setupOrbit();
+  addEventListener('resize', ()=>{ cam.aspect=innerWidth/innerHeight; cam.updateProjectionMatrix(); ren.setSize(innerWidth,innerHeight); });
+  loop();
+}
+
+/* ─── BUILD ─── */
+function build(){
+  const R = 4;           // helix radius (backbone distance from axis)
+  const BASE_IN = 2.8;   // how far bases extend inward from backbone
+  const DY = 1.3;        // vertical step per base pair
+  const TWIST = Math.PI/5; // twist angle per step
+  const N = PAIRS.length;
+
+  for(let i=0;i<N;i++){
+    const a = i*TWIST;
+    const y = (i - N/2)*DY;
+    const b1 = PAIRS[i][0], b2 = PAIRS[i][1];
+
+    // Backbone positions (OUTSIDE the helix)
+    const bx1 = Math.cos(a)*R, bz1 = Math.sin(a)*R;
+    const bx2 = Math.cos(a+Math.PI)*R, bz2 = Math.sin(a+Math.PI)*R;
+
+    // Base tip positions (INSIDE, toward center)
+    // Bases extend from backbone toward the helix axis
+    const tx1 = Math.cos(a)*BASE_IN, tz1 = Math.sin(a)*BASE_IN;
+    const tx2 = Math.cos(a+Math.PI)*BASE_IN, tz2 = Math.sin(a+Math.PI)*BASE_IN;
+
+    // ── Strand 1 nucleotide ──
+    const n1 = makeNuc(b1, bx1,bz1, tx1,tz1, y, 1, i);
+    grp.add(n1.grp);
+    nucs.push(n1);
+
+    // ── Strand 2 nucleotide ──
+    const n2 = makeNuc(b2, bx2,bz2, tx2,tz2, y, 2, i);
+    grp.add(n2.grp);
+    nucs.push(n2);
+
+    // ── Hydrogen bonds (DASHED LINES between paired bases) ──
+    const nH = HBONDS[b1+b2] || 2;
+    makeHBonds(tx1,tz1, tx2,tz2, y, nH, b1+b2, i);
+
+    // ── Backbone connections ──
+    if(i>0){
+      const pa = (i-1)*TWIST, py = (i-1-N/2)*DY;
+      makeTube(Math.cos(pa)*R, Math.sin(pa)*R, py, bx1, bz1, y, 1);
+      makeTube(Math.cos(pa+Math.PI)*R, Math.sin(pa+Math.PI)*R, py, bx2, bz2, y, 2);
+    }
+  }
+}
+
+const PURINE = {A:true, G:true}; // A,G are purines (double ring)
+
+function makeNuc(base, bx,bz, tx,tz, y, strand, idx){
+  const g = new THREE.Group();
+  const isPurine = PURINE[base];
+
+  // Strand 1 (5'→3'): P(on top) — S — B(inward)
+  // Strand 2 (3'→5'): B(inward) — S — P(on bottom)  [antiparallel flip]
+  const flip = strand === 2;
+  const phY = flip ? y - 0.4 : y + 0.4;
+
+  // 1. Phosphate — small sphere at backbone (outermost)
+  const phG = new THREE.SphereGeometry(.2, 12, 12);
+  const phM = new THREE.MeshStandardMaterial({color:COL.phos, roughness:.25, metalness:.12});
+  const ph = new THREE.Mesh(phG, phM);
+  ph.position.set(bx, phY, bz);
+  ph.userData = {t:'phos', base, strand, idx, ox:bx, oy:phY, oz:bz};
+  g.add(ph);
+
+  // 2. Sugar (五碳糖) — pentagon between backbone and base
+  const suG = new THREE.CylinderGeometry(.25, .25, .15, 5);
+  const suM = new THREE.MeshStandardMaterial({color:COL.sugar, roughness:.3, metalness:.1});
+  const su = new THREE.Mesh(suG, suM);
+  const sx = bx+(tx-bx)*.45, sz = bz+(tz-bz)*.45;
+  su.position.set(sx, y, sz);
+  su.userData = {t:'sugar', base, strand, idx, ox:sx, oy:y, oz:sz};
+  g.add(su);
+
+  // Connector: phosphate → sugar
+  mkLine(bx, phY, bz, sx, y, sz, 0x888888, .3, g);
+
+  // 3. Base — at center (innermost)
+  // Purine (A,G): two fused rings on SAME plane — hexagon + pentagon
+  // Pyrimidine (T,C): single hexagon ring
+  const bM = new THREE.MeshStandardMaterial({color:COL[base], roughness:.22, metalness:.12});
+  let b;
+
+  // Inward direction vector (backbone → helix axis)
+  const dirX = tx - bx, dirZ = tz - bz;
+  const dirLen = Math.sqrt(dirX*dirX + dirZ*dirZ);
+  const ndx = dirX/dirLen, ndz = dirZ/dirLen;
+
+  if(isPurine){
+    // Two fused rings on the same horizontal plane
+    // Ring closer to sugar: hexagon (6-membered)
+    // Ring further inward: pentagon (5-membered), fused edge-to-edge
+    const fuseGap = 0.32;
+
+    // Hexagon — closer to sugar side
+    const bG1 = new THREE.CylinderGeometry(.3, .3, .12, 6);
+    b = new THREE.Mesh(bG1, bM);
+    const hx = tx - ndx * fuseGap * 0.5;
+    const hz = tz - ndz * fuseGap * 0.5;
+    b.position.set(hx, y, hz);
+    b.userData = {t:'base', base, strand, idx, ox:hx, oy:y, oz:hz, purine:true};
+    g.add(b);
+
+    // Pentagon — further inward (fused to hexagon)
+    const bG2 = new THREE.CylinderGeometry(.25, .25, .12, 5);
+    const bM2 = new THREE.MeshStandardMaterial({color:COL[base], roughness:.25, metalness:.1});
+    const b2 = new THREE.Mesh(bG2, bM2);
+    const px = tx + ndx * fuseGap * 0.5;
+    const pz = tz + ndz * fuseGap * 0.5;
+    b2.position.set(px, y, pz);
+    b2.userData = {t:'base2', base, strand, idx, ox:px, oy:y, oz:pz};
+    g.add(b2);
+
+    // Connector: sugar → hexagon center
+    mkLine(sx, y, sz, hx, y, hz, 0x999999, .3, g);
+  } else {
+    // Pyrimidine — single hexagon ring
+    const bG = new THREE.CylinderGeometry(.32, .32, .12, 6);
+    b = new THREE.Mesh(bG, bM);
+    b.position.set(tx, y, tz);
+    b.userData = {t:'base', base, strand, idx, ox:tx, oy:y, oz:tz, purine:false};
+    g.add(b);
+
+    // Connector: sugar → base
+    mkLine(sx, y, sz, tx, y, tz, 0x999999, .3, g);
+  }
+
+  b.userData.grp = g;
+  su.userData.grp = g;
+  ph.userData.grp = g;
+
+  return {grp:g, base:b, sugar:su, phos:ph, bM, suM, phM, strand, idx, baseT:base,
+    obx:bx, obz:bz, otx:tx, otz:tz, osx:sx, osz:sz, oy:y, flip, isPurine};
+}
+
+function makeHBonds(x1,z1, x2,z2, y, count, pairStr, idx){
+  // Draw 'count' parallel dashed lines between paired bases
+  // Each line goes full length from base1 to base2, evenly spaced vertically
+  const dx = x2-x1, dz = z2-z1;
+  const dist = Math.sqrt(dx*dx + dz*dz);
+  // Perpendicular offset direction (for spacing multiple parallel bonds)
+  const perpX = -dz/dist, perpZ = dx/dist;
+
+  const vSpread = 0.22; // vertical spread between parallel bonds
+
+  for(let h=0; h<count; h++){
+    // Offset each bond slightly along the perpendicular axis
+    const offset = (h - (count-1)/2) * vSpread;
+    const ox = perpX * offset, oz = perpZ * offset;
+
+    // This dashed line runs from base1 to base2 with offset
+    const sx = x1 + ox, sz = z1 + oz;
+    const ex = x2 + ox, ez = z2 + oz;
+    const segDx = ex-sx, segDz = ez-sz;
+    const segLen = dist;
+
+    // Dashed line parameters
+    const dashLen = 0.18;
+    const gapLen = 0.12;
+    const totalSeg = dashLen + gapLen;
+    const nDashes = Math.floor(segLen / totalSeg);
+
+    for(let d=0; d<nDashes; d++){
+      const dStart = d * totalSeg;
+      const dEnd = dStart + dashLen;
+      if(dEnd > segLen) break;
+      const frac1 = dStart / segLen;
+      const frac2 = dEnd / segLen;
+
+      const cx = sx + segDx * (frac1 + frac2) / 2;
+      const cz = sz + segDz * (frac1 + frac2) / 2;
+
+      const dg = new THREE.CylinderGeometry(.025, .025, dashLen, 4);
+      const dm = new THREE.MeshStandardMaterial({color:0xffffff, transparent:true, opacity:.55, roughness:.5});
+      const dh = new THREE.Mesh(dg, dm);
+      dh.position.set(cx, y, cz);
+      // Orient cylinder along the bond direction
+      const ang = Math.atan2(segDz, segDx);
+      dh.rotation.z = Math.PI/2;
+      dh.rotation.y = -ang;
+      dh.userData = {t:'hline', pair:pairStr, idx};
+      grp.add(dh);
+      hLines.push(dh);
+    }
+  }
+}
+
+function mkLine(x1,y1,z1, x2,y2,z2, col, op, parent){
+  const dx=x2-x1, dy=y2-y1, dz=z2-z1;
+  const len = Math.sqrt(dx*dx+dy*dy+dz*dz);
+  const g = new THREE.CylinderGeometry(.04, .04, len, 4);
+  const m = new THREE.MeshStandardMaterial({color:col, transparent:true, opacity:op});
+  const mesh = new THREE.Mesh(g, m);
+  mesh.position.set((x1+x2)/2,(y1+y2)/2,(z1+z2)/2);
+  const dir = new THREE.Vector3(dx,dy,dz).normalize();
+  mesh.quaternion.setFromUnitVectors(new THREE.Vector3(0,1,0), dir);
+  parent.add(mesh);
+}
+
+function makeTube(x1,z1,y1, x2,z2,y2, strand){
+  const dx=x2-x1, dy=y2-y1, dz=z2-z1;
+  const len = Math.sqrt(dx*dx+dy*dy+dz*dz);
+  const g = new THREE.CylinderGeometry(.09, .09, len, 8);
+  const m = new THREE.MeshStandardMaterial({color:0xd8d4cf, transparent:true, opacity:.55, roughness:.5});
+  const mesh = new THREE.Mesh(g, m);
+  mesh.position.set((x1+x2)/2,(y1+y2)/2,(z1+z2)/2);
+  mesh.quaternion.setFromUnitVectors(new THREE.Vector3(0,1,0), new THREE.Vector3(dx,dy,dz).normalize());
+  mesh.userData = {t:'bone', strand};
+  grp.add(mesh);
+}
+
+/* ─── INTERACTION ─── */
+function onClick(){
+  ray.setFromCamera(mpos, cam);
+  const cl = [];
+  nucs.forEach(n=>{
+    cl.push(n.base, n.sugar, n.phos);
+    // For purines, also collect the second ring
+    n.grp.children.forEach(c=>{ if(c.userData.t==='base2') cl.push(c); });
+  });
+  const hits = ray.intersectObjects(cl);
+  if(hits.length) sel(hits[0].object); else desel();
+}
+
+function sel(mesh){
+  desel();
+  selNuc = mesh;
+  const d = mesh.userData;
+  nucs.forEach(n=>{
+    if(n.idx===d.idx && n.strand===d.strand){
+      n.bM.emissive.setHex(0x444444);
+      n.suM.emissive.setHex(0x333333);
+      n.phM.emissive.setHex(0x333333);
+    }
+  });
+  const p = document.getElementById('info');
+  document.getElementById('iN').textContent = NAMES[d.base];
+  document.getElementById('iN').style.color = '#'+COL[d.base].toString(16).padStart(6,'0');
+  const pb = PAIR_OF[d.base];
+  document.getElementById('iP').textContent = `与 ${NAMES[pb]} 配对（链${d.strand===1?2:1}）`;
+  document.getElementById('iD').style.background = '#'+COL[d.base].toString(16).padStart(6,'0');
+  document.getElementById('iT').textContent = (d.base==='A'||d.base==='G') ? '嘌呤碱基（双环结构）' : '嘧啶碱基（单环结构）';
+  const pk = d.base+pb, hb = HBONDS[pk]||2;
+  document.getElementById('iH').style.display='flex';
+  document.getElementById('iHt').textContent = `${d.base}—${pb}: ${hb}个氢键`;
+  p.classList.add('vis');
+}
+
+function desel(){
+  selNuc=null;
+  nucs.forEach(n=>{n.bM.emissive.setHex(0);n.suM.emissive.setHex(0);n.phM.emissive.setHex(0)});
+  document.getElementById('info').classList.remove('vis');
+}
+
+/* ─── CONTROLS ─── */
+function togRot(){autoR=!autoR;document.getElementById('br').classList.toggle('on',autoR)}
+function togDec(){
+  decM=!decM;document.getElementById('bd').classList.toggle('on',decM);
+  document.getElementById('dc').classList.toggle('vis',decM);
+  if(!decM){document.getElementById('ds').value=0;setDec(0)}
+}
+function setDec(v){
+  decV=v/100;
+  nucs.forEach(n=>{
+    const dir = n.strand===1?1:-1;
+    // Spread strands apart horizontally
+    n.grp.position.x = (n.otx || 0) + decV*5*dir;
+    n.grp.position.z = (n.otz || 0);
+    // Spread internal components — account for antiparallel flip
+    n.sugar.position.y = n.oy + decV*.8 * (n.flip ? -1 : 1);
+    const phDir = n.flip ? -1 : 1;
+    n.phos.position.y = (n.flip ? n.oy - 0.4 : n.oy + 0.4) + decV*1.6 * phDir;
+  });
+  // Spread H-bond lines
+  hLines.forEach(h=>{
+    const d = h.userData;
+    // they stay between bases, just get thinner as bases separate
+    h.material.opacity = .5 * (1 - decV*.7);
+  });
+}
+
+function togLab(){
+  labM=!labM;document.getElementById('bl').classList.toggle('on',labM);
+  if(labM){
+    sprs.forEach(s=>grp.remove(s)); sprs=[];
+    nucs.forEach(n=>{
+      const cv=document.createElement('canvas');cv.width=96;cv.height=40;
+      const cx=cv.getContext('2d');
+      cx.font='bold 24px Space Grotesk';
+      cx.fillStyle='#'+COL[n.baseT].toString(16).padStart(6,'0');
+      cx.textAlign='center';cx.textBaseline='middle';
+      cx.fillText(n.baseT,48,20);
+      const tx=new THREE.CanvasTexture(cv);
+      const mt=new THREE.SpriteMaterial({map:tx,transparent:true,opacity:.85});
+      const sp=new THREE.Sprite(mt);sp.scale.set(1.4,.6,1);
+      sp.position.set(n.otx||0, (n.oy||0)-.9, n.otz||0);
+      grp.add(sp);sprs.push(sp);
+    });
+  } else { sprs.forEach(s=>grp.remove(s));sprs=[]; }
+}
+
+function togXray(){
+  xrayM=!xrayM;document.getElementById('bx').classList.toggle('on',xrayM);
+  nucs.forEach(n=>{
+    n.bM.wireframe=xrayM;n.bM.transparent=xrayM;n.bM.opacity=xrayM?.3:1;n.bM.needsUpdate=true;
+    n.suM.wireframe=xrayM;n.suM.transparent=xrayM;n.suM.opacity=xrayM?.25:1;n.suM.needsUpdate=true;
+    n.phM.wireframe=xrayM;n.phM.transparent=xrayM;n.phM.opacity=xrayM?.25:1;n.phM.needsUpdate=true;
+  });
+}
+
+function setSpd(s){
+  spd=s;
+  document.querySelectorAll('.sp').forEach((b,i)=>b.classList.toggle('on',[0,1,2,4][i]===s));
+}
+function resetV(){
+  cam.position.set(0,0,38);cam.lookAt(0,0,0);
+  rX=0;rY=0;
+  decV=0;document.getElementById('ds').value=0;setDec(0);desel();
+}
+
+/* ─── ORBIT ─── */
+function setupOrbit(){
+  const el=ren.domElement;
+  el.addEventListener('mousedown',e=>{if(e.button===0){drag=true;pm={x:e.clientX,y:e.clientY}}});
+  addEventListener('mouseup',()=>drag=false);
+  addEventListener('mousemove',e=>{
+    if(!drag)return;
+    rY+=(e.clientX-pm.x)*.005;
+    rX+=(e.clientY-pm.y)*.005;
+    rX=Math.max(-1.2,Math.min(1.2,rX));
+    pm={x:e.clientX,y:e.clientY};
+  });
+  el.addEventListener('wheel',e=>{e.preventDefault();cam.position.z=Math.max(10,Math.min(80,cam.position.z+e.deltaY*.03))},{passive:false});
+  // Touch
+  let ltd=0;
+  el.addEventListener('touchstart',e=>{
+    if(e.touches.length===1){drag=true;pm={x:e.touches[0].clientX,y:e.touches[0].clientY}}
+    if(e.touches.length===2) ltd=Math.hypot(e.touches[0].clientX-e.touches[1].clientX,e.touches[0].clientY-e.touches[1].clientY);
+  });
+  el.addEventListener('touchmove',e=>{
+    e.preventDefault();
+    if(e.touches.length===1&&drag){
+      rY+=(e.touches[0].clientX-pm.x)*.005;
+      rX+=(e.touches[0].clientY-pm.y)*.005;
+      rX=Math.max(-1.2,Math.min(1.2,rX));
+      pm={x:e.touches[0].clientX,y:e.touches[0].clientY};
+    }
+    if(e.touches.length===2){
+      const d=Math.hypot(e.touches[0].clientX-e.touches[1].clientX,e.touches[0].clientY-e.touches[1].clientY);
+      cam.position.z=Math.max(10,Math.min(80,cam.position.z-(d-ltd)*.05));ltd=d;
+    }
+  });
+  el.addEventListener('touchend',()=>drag=false);
+}
+
+/* ─── LOOP ─── */
+function loop(){
+  requestAnimationFrame(loop);
+  const t=clk.getElapsedTime();
+  if(autoR&&!drag) rY+=.004*spd;
+  grp.rotation.y=rY;
+  grp.rotation.x=rX;
+
+  // Hover
+  ray.setFromCamera(mpos,cam);
+  const cl=[];
+  nucs.forEach(n=>{
+    cl.push(n.base,n.sugar,n.phos);
+    n.grp.children.forEach(c=>{if(c.userData.t==='base2')cl.push(c)});
+  });
+  const hi=ray.intersectObjects(cl);
+  if(hi.length){ren.domElement.style.cursor='pointer';hi[0].object.scale.setScalar(1.2)}
+  else{ren.domElement.style.cursor='default';cl.forEach(o=>o.scale.setScalar(1))}
+
+  ren.render(scene,cam);
+}
+
+init();
+</script>
+</body>
+</html>
